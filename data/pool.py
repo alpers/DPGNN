@@ -5,6 +5,7 @@ from typing import DefaultDict
 from tqdm import tqdm
 import numpy as np
 import torch
+from scipy.sparse import csr_matrix
 import torch.nn.functional as F
 import random
 import pdb
@@ -55,7 +56,88 @@ class PJFPool(object):
         return self.__str__()
 
 
-class DPGNNPool(PJFPool):
+
+class DPGNNPool:
+    def __init__(self, config):
+        self.config = config
+        self.logger = getLogger(__name__)
+
+        # Initialize attributes as necessary
+        self.geek2jobs = {}
+        self.job2geeks = {}
+        self.geek_num = 0
+        self.job_num = 0
+
+        self.geek_token2id = {}
+        self.geek_id2token = []
+        self.job_token2id = {}
+        self.job_id2token = []
+
+        self.geek_token2bertid = {}
+        self.job_token2bertid = {}
+
+        self._load_tokens('geek')
+        self._load_tokens('job')
+
+        # Populate geek_token2bertid and job_token2bertid
+        self._populate_bert_id_dicts()
+
+        # Load matrices
+        self.interaction_matrix = self._load_edge(os.path.join(self.config['dataset_path'], 'data.train_all'))
+        self.user_add_matrix = self._load_edge(os.path.join(self.config['dataset_path'], 'data.user_add'))
+        self.job_add_matrix = self._load_edge(os.path.join(self.config['dataset_path'], 'data.job_add'))
+
+        self.geek_num = len(self.geek_id2token)
+        self.job_num = len(self.job_id2token)
+
+        # Load BERT vectors
+        self.u_bert_vec, self.j_bert_vec = self._load_bert_vectors()
+
+    def _load_tokens(self, target):
+        token2id = {}
+        id2token = []
+        filepath = os.path.join(self.config['dataset_path'], f'{target}.token')
+        self.logger.info(f'Loading {filepath}')
+        with open(filepath, 'r') as file:
+            for i, line in enumerate(file):
+                token = line.strip()
+                token2id[token] = i
+                id2token.append(token)
+        setattr(self, f'{target}_token2id', token2id)
+        setattr(self, f'{target}_id2token', id2token)
+        setattr(self, f'{target}_num', len(id2token))
+
+    def _populate_bert_id_dicts(self):
+        for token, idx in self.geek_token2id.items():
+            self.geek_token2bertid[token] = idx
+        for token, idx in self.job_token2id.items():
+            self.job_token2bertid[token] = idx
+
+    def _load_edge(self, filepath):
+        self.logger.info(f'Loading edges from {filepath}')
+        data = []
+        row = []
+        col = []
+        with open(filepath, 'r') as file:
+            for line in file:
+                user, item, *_ = line.strip().split()
+                user = int(user)
+                item = int(item)
+                row.append(user)
+                col.append(item)
+                data.append(1)
+        return csr_matrix((data, (row, col)))
+
+    def _load_bert_vectors(self):
+        u_filepath = os.path.join(self.config['dataset_path'], 'geek.bert.npy')
+        j_filepath = os.path.join(self.config['dataset_path'], 'job.bert.npy')
+        self.logger.info(f'Loading BERT vectors from {u_filepath} and {j_filepath}')
+        u_bert_vec = np.load(u_filepath)
+        j_bert_vec = np.load(j_filepath)
+        return u_bert_vec, j_bert_vec
+
+
+class DPGNNPool2(PJFPool):
     def __init__(self, config):
         super(DPGNNPool, self).__init__(config)
         success_file = os.path.join(self.config['dataset_path'], f'data.train_all')

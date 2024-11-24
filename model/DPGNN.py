@@ -62,7 +62,25 @@ class DPGNN(PJFModel):
         if isinstance(module, nn.Embedding):
             xavier_normal_(module.weight.data)
 
+
     def _load_bert(self):
+        # Iterate and process tokens
+        geek_vector_map = {}
+        for geek_token in self.pool.geek_token2id:
+            bert_id = self.pool.geek_token2bertid[geek_token]
+            geek_vector_map[geek_token] = self.pool.u_bert_vec[bert_id]
+
+        job_vector_map = {}
+        for job_token in self.pool.job_token2id:
+            bert_id = self.pool.job_token2bertid[job_token]
+            job_vector_map[job_token] = self.pool.j_bert_vec[bert_id]
+
+        # Setting to instance variables
+        self.bert_user = geek_vector_map
+        self.bert_job = job_vector_map
+
+
+    def _load_bert_2(self):
         self.bert_user = torch.FloatTensor([]).to(self.config['device'])
         for i in range(self.n_users):
             geek_token = self.pool.geek_id2token[i]
@@ -95,8 +113,11 @@ class DPGNN(PJFModel):
         n_all = self.n_users + self.n_items
 
         # success edge
-        row = torch.LongTensor(self.interaction_matrix.row)
-        col = torch.LongTensor(self.interaction_matrix.col) + self.n_users
+        rows, cols = self.interaction_matrix.nonzero()
+        row = torch.LongTensor(rows)
+        col = torch.LongTensor(cols) + self.n_users
+        #row = torch.LongTensor(self.interaction_matrix.row)
+        #col = torch.LongTensor(self.interaction_matrix.col) + self.n_users
         edge_index1 = torch.stack([row, col])
         edge_index2 = torch.stack([col, row])
         edge_index3 = torch.stack([row + n_all, col + n_all])
@@ -104,15 +125,21 @@ class DPGNN(PJFModel):
         edge_index_suc = torch.cat([edge_index1, edge_index2, edge_index3, edge_index4], dim=1)
 
         # user_add edge
-        row = torch.LongTensor(self.user_add_matrix.row)
-        col = torch.LongTensor(self.user_add_matrix.col) + self.n_users
+        rows, cols = self.user_add_matrix.nonzero()
+        row = torch.LongTensor(rows)
+        col = torch.LongTensor(cols) + self.n_users
+        #row = torch.LongTensor(self.user_add_matrix.row)
+        #col = torch.LongTensor(self.user_add_matrix.col) + self.n_users
         edge_index1 = torch.stack([row, col])
         edge_index2 = torch.stack([col, row])
         edge_index_user_add = torch.cat([edge_index1, edge_index2], dim=1)
 
         # job_add edge
-        row = torch.LongTensor(self.job_add_matrix.row)
-        col = torch.LongTensor(self.job_add_matrix.col) + self.n_users
+        rows, cols = self.job_add_matrix.nonzero()
+        row = torch.LongTensor(rows)
+        col = torch.LongTensor(cols) + self.n_users
+        #row = torch.LongTensor(self.job_add_matrix.row)
+        #col = torch.LongTensor(self.job_add_matrix.col) + self.n_users
         edge_index1 = torch.stack([row + n_all, col + n_all])
         edge_index2 = torch.stack([col + n_all, row + n_all])
         edge_index_job_add = torch.cat([edge_index1, edge_index2], dim=1)

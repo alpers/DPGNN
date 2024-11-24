@@ -57,9 +57,11 @@ class PJFDataset(Dataset):
             for line in tqdm(file):
                 # geek_token, job_token, ts, label = line.strip().split('\t')
                 geek_token, job_token, label = line.strip().split('\t')[:3]
-                geek_id = self.geek_token2id[geek_token]
+                geek_id = self.geek_token2id(geek_token, None)
+                job_id = self.job_token2id(job_token, None)
+                if geek_id is None or job_id is None:
+                    continue  # Skip invalid tokens
                 self.geek_ids.append(geek_id)
-                job_id = self.job_token2id[job_token]
                 self.job_ids.append(job_id)
                 self.labels.append(int(label))
         self.geek_ids = torch.LongTensor(self.geek_ids)
@@ -100,9 +102,11 @@ class DPGNNDataset(PJFDataset):
                 geek_token, job_token, label = line.strip().split('\t')[:3]
                 if self.phase[0:5] == 'train' and label[0] == '0':  # 训练过程只保留正例
                     continue
-                geek_id = self.geek_token2id[geek_token]
+                geek_id = self.geek_token2id.get(geek_token, None)
+                job_id = self.job_token2id.get(job_token, None)
+                if geek_id is None or job_id is None:
+                    continue  # Skip invalid tokens
                 self.geek_ids.append(geek_id)
-                job_id = self.job_token2id[job_token]
                 self.job_ids.append(job_id)
                 self.labels.append(int(label))
         self.geek_ids = torch.LongTensor(self.geek_ids)
@@ -115,9 +119,9 @@ class DPGNNDataset(PJFDataset):
         neg_geek = random.randint(1, self.geek_num - 1)
         neg_job = random.randint(1, self.job_num - 1)
 
-        while neg_job in self.pool.geek2jobs[geek_id]:
+        while geek_id not in self.pool.geek2jobs or neg_job in self.pool.geek2jobs.get(geek_id, []):
             neg_job = random.randint(1, self.job_num - 1)
-        while neg_geek in self.pool.job2geeks[job_id]:
+        while job_id not in self.pool.job2geeks or neg_geek in self.pool.job2geeks.get(job_id, []):
             neg_geek = random.randint(1, self.geek_num - 1)
 
         return {
